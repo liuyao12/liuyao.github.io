@@ -95,8 +95,9 @@ function update(source) {
       .attr("transform", function(d) { return "translate(" + source.y0 + "," + source.x0 + ")"; })
       .on("click", click);
 
-  nodeEnter.append("circle")
-      .attr("r", 1e-6)
+  nodeEnter.append("rect")
+      .attr("width", 15)
+      .attr("height", 10)
       .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
 
   nodeEnter.append("text")
@@ -111,8 +112,9 @@ function update(source) {
       .duration(duration)
       .attr("transform", function(d) { return "translate(" + d.y + "," + d.x + ")"; });
 
-  nodeUpdate.select("circle")
-      .attr("r", 4.5)
+  nodeUpdate.select("rect")
+      .attr("width", 15)
+      .attr("height", 10)
       .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
 
   nodeUpdate.select("text")
@@ -124,8 +126,9 @@ function update(source) {
       .attr("transform", function(d) { return "translate(" + source.y + "," + source.x + ")"; })
       .remove();
 
-  nodeExit.select("circle")
-      .attr("r", 1e-6);
+  nodeExit.select("rect")
+      .attr("width", 15)
+      .attr("height", 10);
 
   nodeExit.select("text")
       .style("fill-opacity", 1e-6);
