@@ -96,8 +96,8 @@ function update(source) {
       .on("click", click);
 
   nodeEnter.append("rect")
-      .attr("width", 15)
-      .attr("height", 10)
+      .attr("width", 150)
+      .attr("height", 30)
       .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
 
   nodeEnter.append("text")
@@ -113,8 +113,8 @@ function update(source) {
       .attr("transform", function(d) { return "translate(" + d.y + "," + d.x + ")"; });
 
   nodeUpdate.select("rect")
-      .attr("width", 15)
-      .attr("height", 10)
+      .attr("width", 150)
+      .attr("height", 30)
       .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
 
   nodeUpdate.select("text")
@@ -127,8 +127,8 @@ function update(source) {
       .remove();
 
   nodeExit.select("rect")
-      .attr("width", 15)
-      .attr("height", 10);
+      .attr("width", 150)
+      .attr("height", 30);
 
   nodeExit.select("text")
       .style("fill-opacity", 1e-6);
