@@ -1,29 +1,8 @@
-  // ---------- landscape and flow rendering ----------
+  // ---------- contour and flow rendering ----------
   function resizeCanvas(canvas,el){
     const dpr=1, w=Math.max(1,Math.floor(el.clientWidth*dpr)), h=Math.max(1,Math.floor(el.clientHeight*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
     return {w,h,dpr};
-  }
-
-  // Subdued domain coloring uses arg(P).  A separate red/blue tint, computed
-  // from the local critical expansion of P, marks uphill and downhill sectors
-  // without inserting an artificial hue wheel around the critical point.
-  function hsvToRgb(h,s,v){
-    h=((h%1)+1)%1; s=Math.max(0,Math.min(1,s)); v=Math.max(0,Math.min(1,v));
-    const q=h*6, i=Math.floor(q), f=q-i;
-    const p=v*(1-s), a=v*(1-s*f), b=v*(1-s*(1-f));
-    const rgb=[[v,b,p],[a,v,p],[p,v,b],[p,a,v],[b,p,v],[v,p,a]][i%6];
-    return rgb.map(x=>Math.round(255*x));
-  }
-
-  function periodicLine(x,width){
-    const d=Math.abs(x-Math.round(x));
-    return Math.exp(-0.5*(d/width)**2);
-  }
-
-  function mixRgb(a,b,t){
-    t=Math.max(0,Math.min(1,t));
-    return a.map((x,i)=>Math.round(x+(b[i]-x)*t));
   }
 
   function criticalLocalExpansion(w){
@@ -38,110 +17,102 @@
   }
   function factorial(n){let r=1;for(let k=2;k<=n;k++)r*=k;return r;}
 
-  function prepareSaddleData(){
-    const disk=smallestEnclosingCircle(state.Z);
-    const R=Math.max(disk.radius,1e-6);
-    return state.W.map((w,index)=>{
-      const pw=polyEval(state.P,w), local=criticalLocalExpansion(w);
-      if(abs(pw)<1e-11 || !local) return null;
-      let nearestRoot=Infinity, nearestSaddle=Infinity;
-      for(const z of state.Z) nearestRoot=Math.min(nearestRoot,dist(w,z));
-      for(let k=0;k<state.W.length;k++) if(k!==index) nearestSaddle=Math.min(nearestSaddle,dist(w,state.W[k]));
-      const radius=Math.max(.28*R,Math.min(.78*R,.72*nearestRoot,.55*nearestSaddle));
-      return {w,pw,A:div(local.coefficient,pw),order:local.order,radius,logLevel:Math.log(Math.max(1e-300,abs(pw)))};
-    }).filter(Boolean);
+  function quantile(sorted,q){
+    if(!sorted.length)return 0;
+    const x=(sorted.length-1)*q, i=Math.floor(x), t=x-i;
+    return sorted[i]*(1-t)+sorted[Math.min(sorted.length-1,i+1)]*t;
   }
-
-  function prepareFocusData(){
-    const feather=Math.max(.025,state.zView.half*.10),hull=convexHull(state.Z);
-    if(hull.length<3)return {mode:'disk',feather,disk:smallestEnclosingCircle(state.Z)};
-    return {mode:'hull',feather,hull};
+  function niceContourStep(span,target=11){
+    const raw=Math.max(span/target,1e-6), p=10**Math.floor(Math.log10(raw)), m=raw/p;
+    return (m<1.5?1:m<3?2:m<7?5:10)*p;
   }
-
-
-  function applyFocusDimming(rgb,z,focus){
-    if(!focus || focus.mode==='none') return rgb;
-    const signed=focus.mode==='disk'
-      ? focus.disk.radius-dist(z,focus.disk.center)
-      : signedDistanceToHull(z,focus.hull);
-    const outside=smoothstep(0,focus.feather,-signed);
-    if(outside<=0) return rgb;
-    const luminance=Math.round(.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]);
-    let muted=mixRgb(rgb,[luminance,luminance,luminance],.72*outside);
-    muted=mixRgb(muted,[7,16,24],.58*outside);
-    return muted;
+  function autoContourLevels(values){
+    const a=values.filter(Number.isFinite).slice().sort((x,y)=>x-y);
+    if(a.length<2)return [];
+    let lo=quantile(a,.08), hi=quantile(a,.92);
+    if(!(hi>lo)){lo=a[0];hi=a[a.length-1];}
+    const step=niceContourStep(hi-lo,12), first=Math.ceil(lo/step)*step, out=[];
+    for(let x=first;x<=hi+step*1e-7 && out.length<22;x+=step)out.push(x);
+    return out;
   }
-
-  function domainColor(z,value,derivative,saddles,focus){
-    const m=Math.max(1e-300,abs(value));
-    const phase=(arg(value)+Math.PI)/(2*Math.PI);
-    const log2m=Math.log2(m);
-
-    // Ordinary domain coloring remains visible, but deliberately subdued.
-    const major=periodicLine(log2m,.055), minor=periodicLine(log2m-.5,.08);
-    let v=.46+.12*Math.tanh(log2m/4.5)+.18*major+.045*minor;
-    v=Math.max(.14,Math.min(.88,v));
-    let rgb=hsvToRgb(phase,.46,v);
-
-    // The nearest saddle tints the actual landscape: red uphill, blue downhill.
-    // Close to the saddle we use its first nonzero local term, so all alternating
-    // sectors remain visible, including at a multiple critical point.
-    if(saddles.length){
-      let best=null,bestScaled=Infinity;
-      for(const q of saddles){
-        const delta=sub(z,q.w), scaled=abs(delta)/Math.max(q.radius,1e-9);
-        if(scaled<bestScaled){bestScaled=scaled;best={q,delta};}
-      }
-      if(best){
-        const {q,delta}=best;
-        let power=C(1,0);for(let k=0;k<q.order;k++)power=mul(power,delta);
-        const leading=mul(q.A,power);
-        const denom=abs(q.A)*Math.max(Math.pow(abs(delta),q.order),1e-20);
-        const local=Math.max(-1,Math.min(1,leading.re/denom));
-        const exact=Math.tanh(5.2*(Math.log(m)-q.logLevel));
-        const near=Math.exp(-1.8*bestScaled*bestScaled);
-        const signed=near*local+(1-near)*exact;
-        const up=[236,73,78], down=[55,104,222];
-        const target=signed>=0?up:down;
-        const strength=(.28+.62/(1+Math.pow(bestScaled/1.18,3)))*(.42+.58*Math.abs(signed));
-        rgb=mixRgb(rgb,target,Math.min(.90,strength));
-        const ridge=Math.exp(-.5*Math.pow(signed/.075,2))*Math.exp(-.7*bestScaled*bestScaled);
-        rgb=mixRgb(rgb,[240,244,246],.22*ridge);
+  function dedupeLevels(levels,tol=.015){
+    const a=levels.filter(Number.isFinite).sort((x,y)=>x-y), out=[];
+    for(const x of a)if(!out.length||Math.abs(x-out[out.length-1])>tol)out.push(x);
+    return out;
+  }
+  function edgePoint(edge,x,y,a,b,c,d,level){
+    const interp=(v0,v1)=>{
+      const den=v1-v0;
+      return Math.max(0,Math.min(1,Math.abs(den)<1e-14?.5:(level-v0)/den));
+    };
+    if(edge===0){const t=interp(a,b);return [x+t,y];}
+    if(edge===1){const t=interp(b,c);return [x+1,y+t];}
+    if(edge===2){const t=interp(d,c);return [x+t,y+1];}
+    const t=interp(a,d);return [x,y+t];
+  }
+  function marchLevel(ctx,grid,N,level,sx,sy){
+    ctx.beginPath();
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      const row=N+1, a=grid[y*row+x], b=grid[y*row+x+1], c=grid[(y+1)*row+x+1], d=grid[(y+1)*row+x];
+      if(!Number.isFinite(a+b+c+d))continue;
+      const mask=(a>level?1:0)|(b>level?2:0)|(c>level?4:0)|(d>level?8:0);
+      if(mask===0||mask===15)continue;
+      const crossings=[];
+      if((a>level)!==(b>level))crossings.push(0);
+      if((b>level)!==(c>level))crossings.push(1);
+      if((d>level)!==(c>level))crossings.push(2);
+      if((a>level)!==(d>level))crossings.push(3);
+      const segment=(e0,e1)=>{
+        const p=edgePoint(e0,x,y,a,b,c,d,level),q=edgePoint(e1,x,y,a,b,c,d,level);
+        ctx.moveTo(p[0]*sx,p[1]*sy);ctx.lineTo(q[0]*sx,q[1]*sy);
+      };
+      if(crossings.length===2){segment(crossings[0],crossings[1]);continue;}
+      if(crossings.length!==4)continue;
+      const center=(a+b+c+d)/4, centerHigh=center>level;
+      if(mask===5){
+        if(centerHigh){segment(0,1);segment(2,3);}else{segment(0,3);segment(1,2);}
+      }else if(mask===10){
+        if(centerHigh){segment(0,3);segment(1,2);}else{segment(0,1);segment(2,3);}
+      }else{
+        segment(crossings[0],crossings[1]);segment(crossings[2],crossings[3]);
       }
     }
-    return applyFocusDimming(rgb,z,focus);
+    ctx.stroke();
   }
 
   function drawLandscape(highQuality=true){
     const show=document.getElementById('landscapeToggle').checked;
-    const {w,h}=resizeCanvas(landscapeCanvas,zPlot);
-    const ctx=landscapeCanvas.getContext('2d');
+    const {w,h}=resizeCanvas(landscapeCanvas,zPlot), ctx=landscapeCanvas.getContext('2d');
     ctx.clearRect(0,0,w,h);
-    if(!show) return;
+    if(!show)return;
 
-    // Redraw at a coarser resolution while a point is moving, then sharpen
-    // on pointer release.  This keeps the color field synchronized with P.
+    // Contours of log|P|.  The special levels log|P(w)| pass through the
+    // critical points and reveal the saddle crossings directly.
     const side=Math.min(w,h);
     const N=highQuality
-      ? Math.max(130,Math.min(230,Math.round(side/3.3)))
-      : Math.max(70,Math.min(105,Math.round(side/7.0)));
-    const off=document.createElement('canvas'); off.width=N; off.height=N;
-    const octx=off.getContext('2d',{alpha:false});
-    const img=octx.createImageData(N,N);
-    const saddles=prepareSaddleData();
-    const focus=prepareFocusData();
-
-    for(let j=0;j<N;j++) for(let i=0;i<N;i++){
-      const z=fromScreen((i+.5)/N*zPlot.clientWidth,(j+.5)/N*zPlot.clientHeight,state.zView,zPlot);
-      const value=polyEval(state.P,z);
-      const derivative=polyEval(state.dP,z);
-      const [r,g,b]=domainColor(z,value,derivative,saddles,focus);
-      const k=4*(j*N+i);
-      img.data[k]=r; img.data[k+1]=g; img.data[k+2]=b; img.data[k+3]=255;
+      ? Math.max(105,Math.min(185,Math.round(side/4.1)))
+      : Math.max(55,Math.min(82,Math.round(side/8.3)));
+    const row=N+1, grid=new Float64Array(row*row), samples=[];
+    for(let j=0;j<=N;j++)for(let i=0;i<=N;i++){
+      const z=fromScreen(i/N*zPlot.clientWidth,j/N*zPlot.clientHeight,state.zView,zPlot);
+      const m=Math.max(1e-300,abs(polyEval(state.P,z)));
+      const v=Math.max(-40,Math.min(40,Math.log(m)));
+      grid[j*row+i]=v;samples.push(v);
     }
-    octx.putImageData(img,0,0);
-    ctx.imageSmoothingEnabled=true;
-    ctx.drawImage(off,0,0,w,h);
+    const criticalLevels=dedupeLevels(state.W.map(w=>{
+      const m=abs(polyEval(state.P,w));
+      return m>1e-12?Math.log(m):NaN;
+    }),highQuality?.012:.025);
+    const regular=autoContourLevels(samples).filter(x=>criticalLevels.every(c=>Math.abs(x-c)>.045));
+    const sx=w/N, sy=h/N;
+
+    ctx.save();
+    ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.strokeStyle='rgba(197,216,226,.19)';ctx.lineWidth=highQuality?.85:.75;
+    for(const level of regular)marchLevel(ctx,grid,N,level,sx,sy);
+    ctx.strokeStyle='rgba(239,246,249,.72)';ctx.lineWidth=highQuality?1.55:1.25;
+    for(const level of criticalLevels)marchLevel(ctx,grid,N,level,sx,sy);
+    ctx.restore();
   }
 
 
@@ -237,4 +208,3 @@
     });
     svg.appendChild(group);
   }
-
