@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sendov Flow Paths</title>
+<link rel="stylesheet" href="sendov-flow.css">
+</head>
+<body>
+<header>
+  <h1>Sendov flow paths</h1>
+  <div class="controls">
+    <label class="control">degree <select id="degreeSelect"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option></select></label>
+    <button id="resetBtn">Reset</button><button id="randomBtn">Random</button><button id="fitBtn">Fit</button>
+    <label class="control"><input id="landscapeToggle" type="checkbox" checked> colors</label>
+    <label class="control"><input id="diskToggle" type="checkbox" checked> disk</label>
+  </div>
+</header>
+<main>
+  <section class="card"><div class="plot-wrap"><div id="zPlot" class="plotbox"><canvas id="landscapeCanvas"></canvas><svg id="zSvg" viewBox="0 0 700 700" preserveAspectRatio="none"></svg></div></div><div class="hint">Drag blue roots, orange critical points, or the purple compactified value control. Nearby points of the same kind snap; click a stacked point to separate it.</div></section>
+  <aside class="card"><div class="bars-head"><h2>shortest descending path / R</h2><span id="compactStatus" class="status"></span></div><div class="bars-body"><div id="flowBars" class="flow-bars"></div><div id="flowAxis" class="flow-axis"></div><div id="flowSummary" class="flow-summary"></div></div></aside>
+</main>
+
+<script src="sendov-flow-1.js"></script>
+<script src="sendov-flow-2.js"></script>
+<script src="sendov-flow-3.js"></script>
+<script src="sendov-flow-4.js"></script>
+</body>
+</html>
